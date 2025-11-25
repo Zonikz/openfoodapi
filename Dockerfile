@@ -1,12 +1,14 @@
-# GAINS Food Vision API - Docker image
+# GAINS Food Vision API - Docker image (production-optimized)
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Copy requirements
 COPY requirements.txt .

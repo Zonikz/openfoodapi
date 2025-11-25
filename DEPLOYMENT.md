@@ -92,6 +92,32 @@ curl -X POST "https://your-app.railway.app/api/classify?top_k=5" \
 }
 ```
 
+### Full UK Import (Optional - 150k+ Products)
+
+For production with complete OpenFoodFacts data:
+
+```bash
+# Note: Railway has persistent storage, so data survives redeploys
+
+# 1. SSH into Railway container (via Railway CLI)
+railway shell
+
+# 2. Download OFF dump (10+ GB, takes 10-30 min)
+mkdir -p seeds/data
+curl -L -o seeds/data/off.jsonl.gz \
+  https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+
+# 3. Import ALL UK products (streaming, ~30-60 min)
+python -m seeds.import_off --file seeds/data/off.jsonl.gz --country UK --limit 0
+
+# 4. Build label map
+python -m tools.build_label_map
+
+# 5. Verify
+curl http://localhost:8000/api/health | jq '.data_counts.off_products'
+# Expected: 150000+
+```
+
 ---
 
 ## 🎨 Render
@@ -328,6 +354,9 @@ fly vm status
 **Issue**: CoFID import fails  
 **Fix**: Check CSV download URL is accessible
 
+**Issue**: Disk full during build  
+**Fix**: Ensure `.dockerignore` excludes `seeds/data/`, `data/`, `models/`, `.git/`
+
 ### Runtime Issues
 
 **Issue**: 503 Service Unavailable  
@@ -339,10 +368,30 @@ fly vm status
 **Issue**: Database locked errors  
 **Fix**: SQLite doesn't support concurrent writes - use PostgreSQL for multi-worker
 
+**Issue**: MemoryError on OFF import  
+**Fix**: Use streaming import with `--file` flag (no full file load into RAM)
+
+**Issue**: OFF import UNIQUE errors  
+**Fix**: Already handled automatically - duplicates are skipped on IntegrityError
+
+**Issue**: OFF download blocked  
+**Fix**: Use alternate URL or download on host, then use `--file` flag
+
 ### API Key Issues
 
 **Issue**: 401 Unauthorized  
 **Fix**: Include `X-API-Key` header in all requests (except `/health`, `/docs`)
+
+### Docker-Specific Issues
+
+**Issue**: Container can't see seeds/data  
+**Fix**: Check volume mount in `docker-compose.yml`: `./seeds/data:/app/seeds/data:ro`
+
+**Issue**: TTY error with heredocs  
+**Fix**: Use `docker compose exec -T` (not `exec`) when piping input
+
+**Issue**: Build context too large  
+**Fix**: Ensure `.dockerignore` excludes large directories
 
 ---
 

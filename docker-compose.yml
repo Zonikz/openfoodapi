@@ -6,10 +6,24 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DEBUG=true
+      # Core settings
+      - DEBUG=false
+      - DEFAULT_COUNTRY=UK
       - ENABLE_DETECTOR=false
       - DATABASE_URL=sqlite:///./data/gains_food.db
+      
+      # Performance tuning for VPS
+      - TORCH_NUM_THREADS=4
+      - OFF_BATCH_SIZE=500
+      - USE_GPU=false
+      
+      # Optional API key protection
+      # - API_KEY=your-secure-key-here
     volumes:
+      # Data persistence
       - ./data:/app/data
       - ./models:/app/models
+      
+      # Mount seeds/data for OFF dump import (read-only)
+      - ./seeds/data:/app/seeds/data:ro
     restart: unless-stopped
