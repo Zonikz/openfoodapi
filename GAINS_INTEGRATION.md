@@ -30,6 +30,9 @@ export const API_CONFIG = {
 // For production, add to your .env file:
 // EXPO_PUBLIC_GAINS_API_BASE_URL=https://your-app.railway.app
 // EXPO_PUBLIC_GAINS_API_KEY=your-secure-key-here (if API key auth is enabled)
+
+// Note: Health endpoint (/health) is always public (no API key needed)
+// Use it to verify API availability before making authenticated requests
 ```
 
 ---

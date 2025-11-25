@@ -75,6 +75,52 @@ curl -X POST "http://localhost:8000/api/classify?top_k=5" \
 
 ---
 
+## 🐳 Docker Deployment (4GB VPS)
+
+### Quick Start
+
+```bash
+# Build and run
+docker compose up -d --build
+
+# Check health
+curl http://localhost:8000/health
+```
+
+### Full UK OFF Import (150k+ products)
+
+For production with complete OpenFoodFacts data:
+
+```bash
+# 1. Download OFF dump on host (avoids container disk/RAM issues)
+mkdir -p seeds/data
+curl -L -o seeds/data/off.jsonl.gz \
+  https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+
+# 2. Import 12k UK (smoke test, ~2-3 min)
+docker compose run --rm api \
+  python -m seeds.import_off --file /app/seeds/data/off.jsonl.gz --country UK --limit 12000
+
+# 3. Import ALL UK (150k+, ~30-60 min on 4GB VPS, streams line-by-line)
+docker compose run --rm api \
+  python -m seeds.import_off --file /app/seeds/data/off.jsonl.gz --country UK --limit 0
+
+# 4. Build label map
+docker compose run --rm api python -m tools.build_label_map
+
+# 5. Verify
+curl http://localhost:8000/api/health | jq '.data_counts.off_products'
+# Expected: 150000+
+```
+
+**Benefits of streaming import**:
+- ✅ Works on 4GB VPS (no MemoryError)
+- ✅ Handles duplicates automatically (IntegrityError)
+- ✅ Resume-safe (re-run won't duplicate data)
+- ✅ Batch inserts for speed (500 products/batch)
+
+---
+
 ## 🌍 Public Deployment (2 minutes)
 
 ### Railway (Recommended)
@@ -269,6 +315,33 @@ python tools/build_label_map.py
 pytest tests/ -v
 ```
 
+### Docker Issues
+
+**"Disk full during build"**
+```bash
+docker system prune -af
+docker compose build --no-cache
+```
+
+**"Container can't see seeds/data"**
+- Check volume mount in `docker-compose.yml`: `./seeds/data:/app/seeds/data:ro`
+- Download OFF dump on host, not in container
+
+**"MemoryError on OFF import"**
+- Use `--file` flag for streaming import (no full file load)
+- Reduce batch size: `OFF_BATCH_SIZE=250` in docker-compose.yml
+- Ensure you're using the new streaming importer (not old version)
+
+**"TTY error with heredocs"**
+```bash
+# Use -T flag
+docker compose exec -T api python ...
+```
+
+**"UNIQUE constraint errors"**
+- Already handled automatically (duplicates skipped)
+- Safe to re-run import
+
 ### Deployment Issues
 
 **"503 Service Unavailable"**
@@ -282,6 +355,10 @@ pytest tests/ -v
 **"Slow inference (>2s)"**
 - Free tier CPU throttling
 - Set `TORCH_NUM_THREADS=2` to reduce resource usage
+
+**"OFF download blocked"**
+- Use alternate URL: `https://static.openfoodfacts.org/data/openfoodfacts-products-latest.jsonl.gz`
+- Or download on host and use `--file` flag
 
 ---
 

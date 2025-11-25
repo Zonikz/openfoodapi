@@ -77,12 +77,22 @@ Downloads Food-101 ResNet-50 model (~100MB) with auto-retry.
 # UK CoFID (3,000+ generic foods)
 python seeds/import_cofid.py
 
-# OpenFoodFacts (15,000 UK products)
+# OpenFoodFacts - Quick sample (15k UK products)
 python seeds/import_off.py
+
+# OpenFoodFacts - Full UK import (150k+ products, streaming)
+# First, download the dump (10+ GB, takes 10-30 min)
+mkdir -p seeds/data
+curl -L -o seeds/data/off.jsonl.gz https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+
+# Then import (streams line-by-line, no RAM spike)
+python -m seeds.import_off --file seeds/data/off.jsonl.gz --country UK --limit 0
 
 # Build label map (101 Food-101 classes → CoFID foods)
 python tools/build_label_map.py
 ```
+
+**Docker users**: See "Docker Import" section below.
 
 ### 4. Run Server
 
@@ -232,6 +242,73 @@ Response:
 }
 ```
 
+## 🐳 Docker Deployment
+
+### Quick Start
+
+```bash
+# Build and start
+docker compose up -d --build
+
+# Check health
+curl http://localhost:8000/health
+
+# View logs
+docker compose logs -f
+```
+
+### Full UK Import (150k+ products)
+
+For production with complete OpenFoodFacts data:
+
+```bash
+# 1. Download OFF dump on host (10+ GB, avoids container disk issues)
+mkdir -p seeds/data
+curl -L -o seeds/data/off.jsonl.gz https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
+
+# 2. Import 12k UK products (quick smoke test)
+docker compose run --rm api \
+  python -m seeds.import_off --file /app/seeds/data/off.jsonl.gz --country UK --limit 12000
+
+# 3. Import ALL UK products (150k+, takes ~30-60 min on 4GB VPS)
+docker compose run --rm api \
+  python -m seeds.import_off --file /app/seeds/data/off.jsonl.gz --country UK --limit 0
+
+# 4. Build label map
+docker compose run --rm api python -m tools.build_label_map
+
+# 5. Health check
+curl http://localhost:8000/api/health
+```
+
+**Note**: Use `docker compose exec -T` (not `exec`) when piping heredocs to avoid TTY errors.
+
+### Troubleshooting
+
+**Disk full during build**:
+```bash
+docker system prune -af
+docker compose build --no-cache
+```
+
+**Container can't see seeds/data**:
+- Check `docker-compose.yml` has `./seeds/data:/app/seeds/data:ro` volume mount
+- Ensure seeds/data/ is NOT in `.dockerignore`
+
+**OFF download blocked**:
+- Download on host first, then use `--file` flag
+- Alternative URL: `https://static.openfoodfacts.org/data/openfoodfacts-products-latest.jsonl.gz`
+
+**UNIQUE constraint errors on re-run**:
+- Handled automatically via IntegrityError catching
+- Duplicates are skipped, not inserted
+
+**MemoryError on 4GB VPS**:
+- Use `--file` flag for streaming import (no full file load)
+- Reduce batch size: `OFF_BATCH_SIZE=250` in docker-compose.yml
+
+---
+
 ## 🔧 Configuration
 
 Copy `.env.example` to `.env` and customize:
@@ -246,6 +323,8 @@ Key settings:
 - `TOP_K_PREDICTIONS=5` - Number of predictions to return
 - `MODEL_NAME=food101-resnet50` - Model architecture
 - `DATABASE_URL=sqlite:///./data/gains_food.db` - Database path
+- `OFF_BATCH_SIZE=500` - Batch size for OFF import (reduce if low RAM)
+- `TORCH_NUM_THREADS=4` - CPU threads for inference
 
 ## 🗄️ Database Schema
 
