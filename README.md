@@ -283,6 +283,73 @@ curl http://localhost:8000/api/health
 
 **Note**: Use `docker compose exec -T` (not `exec`) when piping heredocs to avoid TTY errors.
 
+### Automatic Daily Updates (VPS Production)
+
+Keep your food data fresh with automated daily updates using systemd timers:
+
+```bash
+# 1. Make scripts executable
+chmod +x scripts/update_off.sh scripts/update_cofid.sh scripts/update_all.sh
+
+# 2. Create systemd service
+sudo tee /etc/systemd/system/gains-data-update.service > /dev/null <<'EOF'
+[Unit]
+Description=GAINS Food Data Update
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/openfoodapi
+ExecStart=/bin/bash -lc 'git pull --rebase || true && docker compose up -d && bash scripts/update_all.sh'
+TimeoutStartSec=7200
+
+EOF
+
+# 3. Create systemd timer (runs daily at 3:30 AM)
+sudo tee /etc/systemd/system/gains-data-update.timer > /dev/null <<'EOF'
+[Unit]
+Description=Run GAINS data update daily at 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# 4. Enable and start timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now gains-data-update.timer
+
+# 5. Verify timer is active
+systemctl list-timers | grep gains-data-update
+```
+
+**What it does**:
+- Downloads latest OFF dump (~10 GB)
+- Streams import (150k+ UK products, zero RAM spike)
+- Rebuilds label map
+- Vacuums database (reclaim space)
+- Runs health check
+
+**Manual trigger** (for testing):
+```bash
+sudo systemctl start gains-data-update.service
+journalctl -u gains-data-update -f
+```
+
+**Logs**:
+```bash
+# View last run
+journalctl -u gains-data-update --since today
+
+# Follow live
+journalctl -u gains-data-update -f
+```
+
 ### Troubleshooting
 
 **Disk full during build**:
