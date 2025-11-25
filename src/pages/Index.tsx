@@ -149,15 +149,17 @@ const Index = () => {
             
             <div className="flex gap-4 justify-center">
               <a 
-                href="/docs" 
+                href="http://localhost:8000/docs" 
                 target="_blank"
+                rel="noopener noreferrer"
                 className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg font-semibold transition-colors"
               >
                 View API Docs
               </a>
               <a 
-                href="/health" 
+                href="http://localhost:8000/health" 
                 target="_blank"
+                rel="noopener noreferrer"
                 className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg font-semibold transition-colors"
               >
                 Health Check
