@@ -97,8 +97,24 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """
+    Comprehensive health check endpoint
+    
+    Returns:
+        - status: overall health status
+        - classifier: model load status
+        - detector: detector status (if enabled)
+        - database: connection status
+        - data_counts: row counts for each data source
+        - label_map_coverage: percentage of Food-101 classes mapped
+        - last_import: timestamps of data imports
+    """
     try:
+        from app.data.schema import FoodGeneric, FoodOFF, LabelMapping
+        from sqlmodel import select, func
+        from app.models.vision_classifier import FOOD101_CLASSES
+        import json
+        
         # Check classifier
         classifier_status = "loaded" if app.state.classifier and app.state.classifier.ready else "not_loaded"
         
@@ -107,25 +123,69 @@ async def health_check():
         if settings.ENABLE_DETECTOR:
             detector_status = "loaded" if hasattr(app.state, 'detector') and app.state.detector.ready else "not_loaded"
         
-        # Check database
+        # Check database and get counts
         db = next(get_db())
-        db_status = "connected"
+        
+        cofid_count = db.exec(
+            select(func.count(FoodGeneric.id))
+            .where(FoodGeneric.source == "cofid")
+        ).one()
+        
+        off_count = db.exec(
+            select(func.count(FoodOFF.id))
+        ).one()
+        
+        # Check label map coverage
+        label_map_path = settings.label_map_path
+        label_map_coverage = 0
+        mapped_count = 0
+        
+        if label_map_path.exists():
+            with open(label_map_path) as f:
+                label_map = json.load(f)
+                # Exclude _note field
+                mapped_count = len([k for k in label_map.keys() if not k.startswith('_')])
+                label_map_coverage = (mapped_count / len(FOOD101_CLASSES)) * 100
+        
+        # Get database file info for last modified
+        db_path = Path(settings.DATABASE_URL.replace("sqlite:///", ""))
+        last_import = None
+        if db_path.exists():
+            import datetime
+            last_import = datetime.datetime.fromtimestamp(db_path.stat().st_mtime).isoformat()
         
         return {
-            "status": "healthy",
+            "status": "healthy" if classifier_status == "loaded" else "degraded",
+            "timestamp": __import__('datetime').datetime.utcnow().isoformat(),
             "classifier": classifier_status,
             "detector": detector_status,
-            "database": db_status,
+            "database": "connected",
+            "data_counts": {
+                "cofid_foods": cofid_count,
+                "off_products": off_count,
+                "total": cofid_count + off_count
+            },
+            "label_map": {
+                "mapped": mapped_count,
+                "total": len(FOOD101_CLASSES),
+                "coverage_percent": round(label_map_coverage, 1)
+            },
+            "last_import": last_import,
             "models": {
                 "food101": settings.MODEL_NAME,
                 "detector_enabled": settings.ENABLE_DETECTOR
-            }
+            },
+            "api_version": "1.0.0"
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "error": str(e)}
+            content={
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": __import__('datetime').datetime.utcnow().isoformat()
+            }
         )
 
 
