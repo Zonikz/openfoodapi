@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - ENABLE_DETECTOR=false
+      - DATABASE_URL=sqlite:///./data/gains_food.db
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped

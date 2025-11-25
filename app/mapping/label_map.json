@@ -1,0 +1,9 @@
+{
+  "_note": "Mapping from Food-101 labels to canonical food IDs. Build with: python tools/build_label_map.py",
+  "apple_pie": {"source": "cofid", "id": "COFID:apple_pie"},
+  "chicken_curry": {"source": "cofid", "id": "COFID:chicken_curry"},
+  "pizza": {"source": "cofid", "id": "COFID:pizza"},
+  "sushi": {"source": "cofid", "id": "COFID:sushi"},
+  "hamburger": {"source": "cofid", "id": "COFID:hamburger"},
+  "ice_cream": {"source": "cofid", "id": "COFID:ice_cream"}
+}
