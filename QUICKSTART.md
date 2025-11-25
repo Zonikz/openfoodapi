@@ -1,106 +1,297 @@
-# 🚀 GAINS Food Vision API - Quick Start
+# GAINS Food Vision API - Quick Start
 
-Get running in 5 minutes!
+Get the API running in 5 minutes locally, or deploy publicly in 2 minutes.
 
-## Option 1: Local Development
+---
 
-### Step 1: Install Dependencies
+## 🏠 Local Development (5 minutes)
+
+### Prerequisites
+- Python 3.11+
+- 2 GB RAM
+- 500 MB disk space
+
+### One-Command Setup
 
 ```bash
-pip install -r requirements.txt
+# Clone
+git clone https://github.com/your-username/gains-food-vision-api.git
+cd gains-food-vision-api
+
+# Setup everything (venv, deps, model, data, tests)
+make setup-validate
 ```
 
-### Step 2: Download Model
+This command will:
+1. ✅ Create virtual environment
+2. ✅ Install dependencies
+3. ✅ Download Food-101 model (~100MB)
+4. ✅ Import CoFID data (3,000+ UK foods)
+5. ✅ Import OpenFoodFacts data (15,000 UK products)
+6. ✅ Build label map (101/101 classes)
+7. ✅ Run validation tests
+
+**First run takes ~5-10 minutes.** Subsequent runs are instant.
+
+### Start Server
 
 ```bash
-python tools/download_model.py
-```
+# Activate venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
 
-### Step 3: Seed Database
-
-```bash
-python seeds/import_cofid.py
-python seeds/import_off.py
-```
-
-### Step 4: Run Server
-
-```bash
+# Start API
 uvicorn main:app --reload
 ```
 
-🎉 API running at http://localhost:8000
+Server running at: **http://localhost:8000**
 
-📖 Docs at http://localhost:8000/docs
-
----
-
-## Option 2: Docker
+### Test It
 
 ```bash
-docker-compose up --build
-```
-
-🎉 API running at http://localhost:8000
-
----
-
-## Option 3: Replit
-
-1. Create new Repl
-2. Upload project files
-3. Run:
-
-```bash
-pip install -r requirements.txt
-python tools/download_model.py
-python seeds/import_cofid.py
-uvicorn main:app --host 0.0.0.0 --port $PORT
-```
-
----
-
-## Test the API
-
-### 1. Health Check
-
-```bash
+# Health check
 curl http://localhost:8000/health
+
+# API docs (interactive)
+open http://localhost:8000/docs
+
+# Classify food
+curl -X POST "http://localhost:8000/api/classify?top_k=5" \
+  -F "file=@examples/pizza.jpg"
 ```
 
-### 2. Search Foods
-
-```bash
-curl "http://localhost:8000/api/foods/search?q=chicken&limit=5"
-```
-
-### 3. GAINS Score
-
-```bash
-curl -X POST "http://localhost:8000/api/score/gains" \
-  -H "Content-Type: application/json" \
-  -d '{"canonical_id": "COFID:1001", "grams": 250}'
+**Expected response**:
+```json
+{
+  "model": "food101-resnet50",
+  "top_k": [
+    {"label": "pizza", "score": 0.89},
+    {"label": "flatbread", "score": 0.06}
+  ],
+  "inference_ms": 185
+}
 ```
 
 ---
 
-## Connect GAINS App
+## 🌍 Public Deployment (2 minutes)
 
-In your GAINS mobile app, set API URL to:
+### Railway (Recommended)
 
+1. **Fork this repo** on GitHub
+
+2. **Deploy to Railway**
+   - Go to [railway.app](https://railway.app)
+   - Click "New Project" → "Deploy from GitHub repo"
+   - Select `gains-food-vision-api`
+
+3. **Configure** (in Railway dashboard)
+   
+   **Build Command**:
+   ```
+   pip install -r requirements.txt && make setup-validate
+   ```
+   
+   **Start Command**:
+   ```
+   uvicorn main:app --host 0.0.0.0 --port $PORT
+   ```
+   
+   **Environment Variables**:
+   ```
+   DEFAULT_COUNTRY=UK
+   ENABLE_DETECTOR=false
+   DATABASE_URL=sqlite:///./data/gains_food.db
+   ```
+   
+   **Optional - API Key** (for protection):
+   ```
+   API_KEY=<generate with: openssl rand -hex 32>
+   ```
+
+4. **Deploy**
+   - First build: ~5-10 minutes
+   - Get your public URL: `https://gains-food-vision-api-production.up.railway.app`
+
+### Verify Deployment
+
+```bash
+# Set your Railway URL
+export API_URL="https://your-app.railway.app"
+
+# Check health
+curl $API_URL/health
+
+# Expected: "status": "healthy", "classifier": "loaded", 3k+ CoFID, 15k+ OFF
+
+# View docs
+open $API_URL/docs
+
+# Test classify (with API key if enabled)
+curl -X POST "$API_URL/api/classify?top_k=5" \
+  -H "X-API-Key: your-key" \
+  -F "file=@examples/pizza.jpg"
 ```
-http://YOUR-SERVER-URL:8000
-```
-
-Then use the API endpoints as documented in README.md
 
 ---
 
-## Next Steps
+## 📱 Connect GAINS Mobile App
 
-- Read full [README.md](README.md)
-- Import real CoFID/OFF data
-- Train better classifier
-- Deploy to production
+### Set Environment Variables
 
-🎊 You're all set!
+```bash
+# .env in your Expo project
+EXPO_PUBLIC_GAINS_API_BASE_URL=https://your-app.railway.app
+EXPO_PUBLIC_GAINS_API_KEY=your-key-here  # if using API key auth
+```
+
+### Example Usage
+
+```typescript
+// services/gainsApi.ts
+const API_URL = process.env.EXPO_PUBLIC_GAINS_API_BASE_URL;
+const API_KEY = process.env.EXPO_PUBLIC_GAINS_API_KEY;
+
+// Classify food
+const formData = new FormData();
+formData.append('file', {
+  uri: photoUri,
+  type: 'image/jpeg',
+  name: 'food.jpg'
+});
+
+const response = await fetch(`${API_URL}/api/classify?top_k=5`, {
+  method: 'POST',
+  headers: {
+    ...(API_KEY && { 'X-API-Key': API_KEY })
+  },
+  body: formData
+});
+
+const result = await response.json();
+// { model: "food101-resnet50", top_k: [...], inference_ms: 185 }
+```
+
+**Full integration guide**: [GAINS_INTEGRATION.md](./GAINS_INTEGRATION.md)
+
+---
+
+## ⚡ Architecture Flow
+
+```
+📸 User takes photo in GAINS app
+    ↓
+🔄 POST /api/classify → Top 5 predictions
+    ↓
+👆 User selects prediction
+    ↓
+🗺️  POST /api/map-to-food → Canonical food + nutrition
+    ↓
+⚖️  User estimates portion (on-device)
+    ↓
+🏆 POST /api/score/gains → GAINS score (A-F)
+    ↓
+📊 Display score in app
+```
+
+---
+
+## 🛠️ Other Deployment Options
+
+- **Render**: `render.yaml` included → One-click blueprint deploy
+- **Fly.io**: Global edge deployment with `fly.toml`
+- **Replit**: `.replit` config for instant demo/dev environment
+
+Full guides: [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+---
+
+## 🔐 Security
+
+### API Key Protection (Optional)
+
+Restrict access by setting `API_KEY` environment variable:
+
+```bash
+# Generate secure key
+openssl rand -hex 32
+
+# Set in Railway/Render/Fly.io
+API_KEY=<your-generated-key>
+```
+
+All endpoints require `X-API-Key` header (except `/health` and `/docs`).
+
+### CORS
+
+Default: `*` (all origins) for Expo/React Native development.
+
+**Production**: Tighten in `main.py`:
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://gains.app", "https://staging.gains.app"],
+    ...
+)
+```
+
+---
+
+## 📊 Expected Performance
+
+- **Inference**: ~150-250ms (CPU, Food-101 ResNet-50)
+- **Database queries**: <50ms
+- **Throughput**: ~50 req/s (single worker)
+
+Free tier platforms (Railway, Render) will be slower but functional.
+
+---
+
+## 🚨 Troubleshooting
+
+### Local Setup Issues
+
+**"Model not found"**
+```bash
+python tools/download_model.py
+```
+
+**"Database empty"**
+```bash
+python seeds/import_cofid.py
+python seeds/import_off.py
+python tools/build_label_map.py
+```
+
+**"Tests failing"**
+```bash
+pytest tests/ -v
+```
+
+### Deployment Issues
+
+**"503 Service Unavailable"**
+- Check health: `curl https://your-app.railway.app/health`
+- If `classifier: "not_loaded"`, check build logs for model download errors
+
+**"Build timeout"**
+- Railway: Increase timeout in settings
+- Render: Upgrade plan or reduce OFF import size
+
+**"Slow inference (>2s)"**
+- Free tier CPU throttling
+- Set `TORCH_NUM_THREADS=2` to reduce resource usage
+
+---
+
+## 📚 Next Steps
+
+1. **Read API docs**: http://localhost:8000/docs
+2. **Integration guide**: [GAINS_INTEGRATION.md](./GAINS_INTEGRATION.md)
+3. **Deployment guide**: [DEPLOYMENT.md](./DEPLOYMENT.md)
+4. **Data sources**: [DATA_SOURCES.md](./DATA_SOURCES.md)
+
+---
+
+**Questions?** Open an issue or check the [full README](./README.md).

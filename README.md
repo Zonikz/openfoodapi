@@ -4,38 +4,38 @@ Free, self-hosted food recognition + nutrition + GAINS scoring API for the GAINS
 
 **Zero paid APIs. Runs anywhere. Production-ready.**
 
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/your-template)
+
 ---
 
-## ⚡ 5-Minute Quick Start
+## ⚡ Quick Start
 
-**One command sets up everything:**
-
-```bash
-make setup-validate
-```
-
-This will:
-- ✅ Create virtual environment
-- ✅ Install dependencies
-- ✅ Download Food-101 model weights (~100MB)
-- ✅ Import UK CoFID nutrition data (3,000+ foods)
-- ✅ Import OpenFoodFacts products (15,000 items)
-- ✅ Build label map (100% coverage, all 101 classes)
-- ✅ Run validation tests
-
-**Then start the server:**
+### 🏠 Local (5 minutes)
 
 ```bash
-# Activate virtual environment
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
-
-# Start server
+git clone https://github.com/your-username/gains-food-vision-api.git
+cd gains-food-vision-api
+make setup-validate  # Downloads model, imports data, runs tests
+source venv/bin/activate
 uvicorn main:app --reload
 ```
 
-**API ready at:** `http://localhost:8000` | **Docs:** `http://localhost:8000/docs`
+**API ready**: http://localhost:8000 | **Docs**: http://localhost:8000/docs
+
+### 🌍 Deploy Public (2 minutes)
+
+**Railway** (recommended):
+1. Fork this repo
+2. [Railway](https://railway.app) → New Project → Deploy from GitHub
+3. Set build: `pip install -r requirements.txt && make setup-validate`
+4. Set start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+5. Add env vars: `DEFAULT_COUNTRY=UK`, `ENABLE_DETECTOR=false`
+
+**Public URL**: `https://your-app.railway.app`
+
+**Other platforms**: See [DEPLOYMENT.md](./DEPLOYMENT.md) for Render, Fly.io, Replit
+
+**Quickstart guide**: [QUICKSTART.md](./QUICKSTART.md)
 
 ---
 
@@ -56,7 +56,7 @@ uvicorn main:app --reload
 
 ## 📦 Manual Setup (Alternative)
 
-If you prefer step-by-step setup:
+If you prefer step-by-step or need to troubleshoot:
 
 ### 1. Install Dependencies
 
@@ -91,13 +91,15 @@ python tools/build_label_map.py
 # Local development
 uvicorn main:app --reload
 
-# Production (Replit/Render/Railway)
+# Production
 uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
 Server starts at `http://localhost:8000`
 
 **Docs:** `http://localhost:8000/docs`
+
+---
 
 ## 📡 API Endpoints
 
@@ -314,9 +316,13 @@ US government database for fallback.
 
 ## 🎯 GAINS App Integration
 
-From GAINS mobile app:
+Quick example for React Native / Expo:
 
 ```typescript
+// .env
+EXPO_PUBLIC_GAINS_API_BASE_URL=https://your-app.railway.app
+EXPO_PUBLIC_GAINS_API_KEY=your-key-here  # if using API key auth
+
 // 1. Classify photo
 const formData = new FormData();
 formData.append('file', {
@@ -325,58 +331,99 @@ formData.append('file', {
   name: 'photo.jpg'
 });
 
-const predictions = await fetch('https://api.gains.app/api/classify?top_k=5', {
-  method: 'POST',
-  body: formData
-}).then(r => r.json());
+const predictions = await fetch(
+  `${process.env.EXPO_PUBLIC_GAINS_API_BASE_URL}/api/classify?top_k=5`,
+  {
+    method: 'POST',
+    headers: {
+      'X-API-Key': process.env.EXPO_PUBLIC_GAINS_API_KEY  // if enabled
+    },
+    body: formData
+  }
+).then(r => r.json());
 
-// 2. User selects prediction
-const selectedFood = predictions.top_k[0].label;
-
-// 3. Map to canonical food
-const food = await fetch('https://api.gains.app/api/map-to-food', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({
-    query: selectedFood,
-    country: 'UK'
-  })
-}).then(r => r.json());
-
-// 4. User estimates portion (on-device)
-const portionGrams = 250;
-
-// 5. Calculate GAINS score
-const score = await fetch('https://api.gains.app/api/score/gains', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({
-    canonical_id: food.source_id,
-    grams: portionGrams
-  })
-}).then(r => r.json());
-
-// 6. Display score in UI
-console.log(`GAINS Score: ${score.score.overall} (${score.grade})`);
+// 2. User selects prediction → Map to food → Calculate score
+// See GAINS_INTEGRATION.md for complete examples
 ```
 
-## 🚀 Deployment
+**Full integration guide**: [GAINS_INTEGRATION.md](./GAINS_INTEGRATION.md)
 
-### Replit
+## 🚀 Public Deployment
 
-1. Create new Repl
-2. Upload code
-3. `pip install -r requirements.txt`
-4. `python tools/download_model.py`
-5. `python seeds/import_cofid.py`
-6. Run `uvicorn main:app --host 0.0.0.0 --port $PORT`
+Deploy in minutes to Railway, Render, Fly.io, or Replit.
 
-### Render / Railway
+### Railway (Recommended - 2 minutes)
 
-1. Connect GitHub repo
-2. Set build command: `pip install -r requirements.txt && python tools/download_model.py && python seeds/import_cofid.py`
-3. Set start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Deploy
+1. **Connect GitHub**
+   - Fork this repo
+   - Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+
+2. **Configure**
+   ```
+   Build: pip install -r requirements.txt && make setup-validate
+   Start: uvicorn main:app --host 0.0.0.0 --port $PORT
+   ```
+
+3. **Set Environment Variables**
+   ```
+   DEFAULT_COUNTRY=UK
+   ENABLE_DETECTOR=false
+   DATABASE_URL=sqlite:///./data/gains_food.db
+   
+   # Optional API Key Protection
+   API_KEY=your-secure-key-here
+   ```
+
+4. **Deploy**
+   - First build: ~5-10 minutes (downloads model + imports data)
+   - Public URL: `https://your-app.railway.app`
+
+**Smoke Test**:
+```bash
+# Check health
+curl https://your-app.railway.app/health
+
+# Test classification (with API key if enabled)
+curl -X POST "https://your-app.railway.app/api/classify?top_k=5" \
+  -H "X-API-Key: your-key" \
+  -F "file=@examples/pizza.jpg"
+
+# View docs
+open https://your-app.railway.app/docs
+```
+
+### Other Platforms
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for complete guides:
+- **Render**: One-click with `render.yaml`
+- **Fly.io**: Global edge deployment
+- **Replit**: Quick demos
+
+---
+
+## 🔐 Optional API Key Auth
+
+Protect your API by setting the `API_KEY` environment variable:
+
+```bash
+# Generate secure key
+openssl rand -hex 32
+
+# Set in Railway/Render/Fly.io
+API_KEY=your-generated-key
+```
+
+All endpoints (except `/health` and `/docs`) will require the `X-API-Key` header.
+
+**Client usage**:
+```typescript
+// React Native
+fetch('https://your-api.com/api/classify', {
+  headers: { 'X-API-Key': 'your-key' }
+})
+```
+
+---
 
 ## 📈 Performance
 
