@@ -344,6 +344,154 @@ fly vm status
 
 ---
 
+## 🔄 Automatic Daily Updates (VPS Production)
+
+For production VPS deployments, keep your OpenFoodFacts data fresh with automated daily updates.
+
+### Setup Systemd Timer
+
+**Step 1: Make scripts executable**
+```bash
+chmod +x scripts/update_off.sh scripts/update_cofid.sh scripts/update_all.sh
+```
+
+**Step 2: Create systemd service**
+```bash
+sudo tee /etc/systemd/system/gains-data-update.service > /dev/null <<'EOF'
+[Unit]
+Description=GAINS Food Data Update
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/openfoodapi
+ExecStart=/bin/bash -lc 'git pull --rebase || true && docker compose up -d && bash scripts/update_all.sh'
+TimeoutStartSec=7200
+EOF
+```
+
+**Step 3: Create systemd timer**
+```bash
+sudo tee /etc/systemd/system/gains-data-update.timer > /dev/null <<'EOF'
+[Unit]
+Description=Run GAINS data update daily at 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+**Step 4: Enable and start**
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now gains-data-update.timer
+```
+
+**Step 5: Verify**
+```bash
+systemctl list-timers | grep gains-data-update
+```
+
+### What It Does
+
+The automated update:
+1. **Downloads** latest OFF dump (~10 GB)
+2. **Streams import** (150k+ UK products, zero RAM spike)
+3. **Rebuilds label map** for 101 Food-101 classes
+4. **Vacuums database** to reclaim space
+5. **Runs health check** to verify success
+
+### Manual Triggers
+
+**Test the update**:
+```bash
+sudo systemctl start gains-data-update.service
+journalctl -u gains-data-update -f
+```
+
+**View logs**:
+```bash
+# Last run
+journalctl -u gains-data-update --since today
+
+# Follow live
+journalctl -u gains-data-update -f
+
+# Last 100 lines
+journalctl -u gains-data-update -n 100
+```
+
+**Disable timer** (if needed):
+```bash
+sudo systemctl stop gains-data-update.timer
+sudo systemctl disable gains-data-update.timer
+```
+
+### Update Scripts
+
+The repo includes three automation scripts:
+
+**`scripts/update_off.sh`** - OpenFoodFacts update
+- Downloads latest OFF dump
+- Streams import (all UK products)
+- Rebuilds label map
+- Vacuums database
+
+**`scripts/update_cofid.sh`** - CoFID update
+- Re-imports CoFID data
+- Rebuilds label map
+
+**`scripts/update_all.sh`** - Complete update
+- Runs OFF update
+- Optionally runs CoFID update
+- Health check
+
+### Customization
+
+**Change schedule**:
+Edit `/etc/systemd/system/gains-data-update.timer`:
+```ini
+# Every Sunday at 2 AM
+OnCalendar=Sun *-*-* 02:00:00
+
+# Twice daily (3:30 AM and 3:30 PM)
+OnCalendar=*-*-* 03:30:00
+OnCalendar=*-*-* 15:30:00
+```
+
+**Change working directory**:
+Edit `/etc/systemd/system/gains-data-update.service`:
+```ini
+WorkingDirectory=/your/custom/path/gains-food-vision-api
+```
+
+**Update specific country**:
+Edit `scripts/update_off.sh`, change:
+```bash
+--country UK
+```
+to:
+```bash
+--country US
+```
+
+### VPS Resource Notes
+
+- **Disk**: ~15 GB required (dump + database + temp)
+- **RAM**: 4 GB minimum (streaming import uses <500 MB)
+- **Duration**: 30-90 minutes (network + processing)
+- **Bandwidth**: ~10 GB download per run
+
+**Tip**: Schedule during low-traffic hours (3-5 AM).
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Build Failures
@@ -392,6 +540,17 @@ fly vm status
 
 **Issue**: Build context too large  
 **Fix**: Ensure `.dockerignore` excludes large directories
+
+### Systemd Timer Issues
+
+**Issue**: Timer not running  
+**Fix**: Check status with `systemctl status gains-data-update.timer`
+
+**Issue**: Service fails  
+**Fix**: Check logs with `journalctl -u gains-data-update -n 50`
+
+**Issue**: Wrong working directory  
+**Fix**: Update `WorkingDirectory` in service file, then `systemctl daemon-reload`
 
 ---
 
