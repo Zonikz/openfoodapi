@@ -4,7 +4,6 @@ Free, self-hosted food recognition + nutrition + GAINS scoring API for the GAINS
 
 **Zero paid APIs. Runs anywhere. Production-ready.**
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/your-template)
 
 ---
 
