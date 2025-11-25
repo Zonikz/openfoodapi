@@ -14,14 +14,22 @@ export const API_CONFIG = {
     ? 'http://10.0.2.2:8000'  // Android emulator
     : 'http://localhost:8000', // iOS simulator
   
-  // Production (self-hosted)
-  // baseURL: 'https://your-api-domain.com',
+  // Production (self-hosted - use environment variable)
+  // baseURL: process.env.EXPO_PUBLIC_GAINS_API_BASE_URL || 'https://your-railway-app.railway.app',
   
   timeout: 10000, // 10 seconds
   headers: {
     'Content-Type': 'application/json',
+    // Optional: Add API key if your deployment uses it
+    ...(process.env.EXPO_PUBLIC_GAINS_API_KEY && {
+      'X-API-Key': process.env.EXPO_PUBLIC_GAINS_API_KEY
+    })
   }
 };
+
+// For production, add to your .env file:
+// EXPO_PUBLIC_GAINS_API_BASE_URL=https://your-app.railway.app
+// EXPO_PUBLIC_GAINS_API_KEY=your-secure-key-here (if API key auth is enabled)
 ```
 
 ---
