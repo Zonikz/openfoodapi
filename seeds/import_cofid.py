@@ -2,8 +2,10 @@
 import pandas as pd
 import sys
 from pathlib import Path
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 import logging
+import urllib.request
+import io
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,70 +17,176 @@ from app.config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# CoFID public CSV URL (UK government open data)
+COFID_CSV_URL = "https://assets.publishing.service.gov.uk/media/5a7ba84b40f0b62302697568/CoFID2021.csv"
+
+
+def download_cofid_csv() -> Path:
+    """Download CoFID CSV from UK government website"""
+    try:
+        data_dir = Path("data")
+        data_dir.mkdir(exist_ok=True)
+        csv_path = data_dir / "cofid.csv"
+        
+        if csv_path.exists():
+            logger.info(f"✅ CoFID CSV already downloaded: {csv_path}")
+            return csv_path
+        
+        logger.info("📥 Downloading CoFID dataset from UK government...")
+        logger.info(f"   URL: {COFID_CSV_URL}")
+        
+        # Download
+        response = urllib.request.urlopen(COFID_CSV_URL)
+        content = response.read().decode('utf-8')
+        
+        # Save
+        with open(csv_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        file_size = csv_path.stat().st_size / 1024
+        logger.info(f"✅ Downloaded CoFID CSV ({file_size:.1f} KB)")
+        return csv_path
+        
+    except Exception as e:
+        logger.warning(f"⚠️  Could not download CoFID: {e}")
+        logger.info("💡 Using sample data instead...")
+        return None
+
 
 def import_cofid():
     """Import CoFID data from CSV"""
     try:
-        logger.info("📦 Importing CoFID data...")
+        logger.info("🚀 GAINS Food Vision - CoFID Import")
+        logger.info("=" * 60)
         
         # Initialize database
         init_db()
         
-        # Check if CSV exists
-        csv_path = Path(settings.COFID_CSV_PATH)
+        # Check existing data
+        with Session(engine) as session:
+            existing_count = session.exec(
+                select(func.count(FoodGeneric.id))
+                .where(FoodGeneric.source == "cofid")
+            ).one()
+            
+            if existing_count > 0:
+                logger.info(f"✅ CoFID already imported ({existing_count} foods)")
+                logger.info("💡 To re-import, delete foods_generic table and run again")
+                return
         
-        if not csv_path.exists():
-            logger.warning(f"⚠️  CoFID CSV not found at {csv_path}")
-            logger.info("📥 Creating sample CoFID data...")
+        # Try to download CSV
+        csv_path = download_cofid_csv()
+        
+        if not csv_path or not csv_path.exists():
+            logger.warning("⚠️  CoFID download failed, using sample data...")
             _create_sample_cofid()
             return
         
         # Read CSV
-        logger.info(f"📖 Reading {csv_path}...")
-        df = pd.read_csv(csv_path)
+        logger.info(f"📖 Parsing CoFID CSV...")
+        try:
+            # CoFID CSV format: Food Name, Food Code, Energy (kcal), Protein (g), etc.
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            logger.info(f"📊 Found {len(df)} foods in CSV")
+        except Exception as e:
+            logger.error(f"❌ CSV parsing failed: {e}")
+            logger.info("💡 Using sample data instead...")
+            _create_sample_cofid()
+            return
         
         # Process and insert
+        logger.info("💾 Importing foods to database...")
         with Session(engine) as session:
             count = 0
+            skipped = 0
             
-            for _, row in df.iterrows():
-                # Check if already exists
-                existing = session.exec(
-                    select(FoodGeneric)
-                    .where(FoodGeneric.source_id == f"COFID:{row['code']}")
-                ).first()
+            for idx, row in df.iterrows():
+                try:
+                    # Extract food code and name
+                    food_code = str(row.get('Food Code', row.get('Code', idx))).strip()
+                    food_name = str(row.get('Food Name', row.get('Name', 'Unknown'))).strip()
+                    
+                    if not food_name or food_name == 'Unknown':
+                        skipped += 1
+                        continue
+                    
+                    # Check if already exists
+                    source_id = f"COFID:{food_code}"
+                    existing = session.exec(
+                        select(FoodGeneric)
+                        .where(FoodGeneric.source_id == source_id)
+                    ).first()
+                    
+                    if existing:
+                        skipped += 1
+                        continue
+                    
+                    # Parse nutrition (handle various column names and formats)
+                    def safe_float(val, default=None):
+                        try:
+                            if pd.isna(val) or val == '' or val == 'N' or val == 'Tr':
+                                return default
+                            return float(str(val).replace(',', '.'))
+                        except:
+                            return default
+                    
+                    energy_kcal = safe_float(row.get('Energy (kcal)', row.get('Calories', None)))
+                    protein_g = safe_float(row.get('Protein (g)', row.get('Protein', None)))
+                    carb_g = safe_float(row.get('Carbohydrate (g)', row.get('Carbohydrate', None)))
+                    fat_g = safe_float(row.get('Fat (g)', row.get('Fat', None)))
+                    fiber_g = safe_float(row.get('Fibre (g)', row.get('Fiber', None)))
+                    sugar_g = safe_float(row.get('Total sugars (g)', row.get('Sugars', None)))
+                    saturated_fat_g = safe_float(row.get('Saturated fatty acids (g)', row.get('Saturated fat', None)))
+                    sodium_mg = safe_float(row.get('Sodium (mg)', row.get('Sodium', None)))
+                    
+                    # Category
+                    category = str(row.get('Main food group', row.get('Category', ''))).strip() or None
+                    subcategory = str(row.get('Sub food group', row.get('Subcategory', ''))).strip() or None
+                    
+                    food = FoodGeneric(
+                        source="cofid",
+                        source_id=source_id,
+                        name=food_name,
+                        name_lower=food_name.lower(),
+                        energy_kcal=energy_kcal,
+                        protein_g=protein_g,
+                        carb_g=carb_g,
+                        fat_g=fat_g,
+                        fiber_g=fiber_g,
+                        sugar_g=sugar_g,
+                        saturated_fat_g=saturated_fat_g,
+                        sodium_mg=sodium_mg,
+                        category=category,
+                        subcategory=subcategory
+                    )
+                    
+                    session.add(food)
+                    count += 1
+                    
+                    if count % 100 == 0:
+                        session.commit()
+                        logger.info(f"  ✓ Imported {count} foods...")
                 
-                if existing:
+                except Exception as e:
+                    logger.debug(f"  Skipped row {idx}: {e}")
+                    skipped += 1
                     continue
-                
-                food = FoodGeneric(
-                    source="cofid",
-                    source_id=f"COFID:{row['code']}",
-                    name=row['name'],
-                    name_lower=row['name'].lower(),
-                    energy_kcal=row.get('energy_kcal'),
-                    protein_g=row.get('protein_g'),
-                    carb_g=row.get('carb_g'),
-                    fat_g=row.get('fat_g'),
-                    fiber_g=row.get('fiber_g'),
-                    sugar_g=row.get('sugar_g'),
-                    saturated_fat_g=row.get('saturated_fat_g'),
-                    sodium_mg=row.get('sodium_mg'),
-                    category=row.get('category'),
-                    subcategory=row.get('subcategory')
-                )
-                
-                session.add(food)
-                count += 1
-                
-                if count % 100 == 0:
-                    logger.info(f"  Processed {count} foods...")
             
             session.commit()
-            logger.info(f"✅ Imported {count} CoFID foods")
+            
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("✅ CoFID IMPORT COMPLETE!")
+            logger.info("=" * 60)
+            logger.info(f"📊 Imported: {count} foods")
+            logger.info(f"⏭️  Skipped: {skipped} items")
+            logger.info(f"📁 Source: CoFID (UK government)")
+            logger.info("")
     
     except Exception as e:
         logger.error(f"❌ Import failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
