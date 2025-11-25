@@ -2,21 +2,61 @@
 
 Free, self-hosted food recognition + nutrition + GAINS scoring API for the GAINS mobile app.
 
-**Zero paid APIs. Runs anywhere.**
+**Zero paid APIs. Runs anywhere. Production-ready.**
+
+---
+
+## ⚡ 5-Minute Quick Start
+
+**One command sets up everything:**
+
+```bash
+make setup-validate
+```
+
+This will:
+- ✅ Create virtual environment
+- ✅ Install dependencies
+- ✅ Download Food-101 model weights (~100MB)
+- ✅ Import UK CoFID nutrition data (3,000+ foods)
+- ✅ Import OpenFoodFacts products (15,000 items)
+- ✅ Build label map (100% coverage, all 101 classes)
+- ✅ Run validation tests
+
+**Then start the server:**
+
+```bash
+# Activate virtual environment
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
+
+# Start server
+uvicorn main:app --reload
+```
+
+**API ready at:** `http://localhost:8000` | **Docs:** `http://localhost:8000/docs`
+
+---
 
 ## 🎯 Features
 
 - 🧠 **Food-101 Classifier** - ResNet-50, CPU-optimized, ~200ms inference
 - 🔍 **YOLOv8 Detector** - Optional bounding boxes (feature-flagged)
-- 📊 **UK CoFID** - Government nutrition database
-- 🌍 **OpenFoodFacts** - 2M+ products, local dump
-- 🥗 **USDA FDC** - Optional fallback
+- 📊 **UK CoFID** - 3,000+ government nutrition database foods
+- 🌍 **OpenFoodFacts** - 15,000+ UK products with barcodes
 - 🏆 **GAINS Scoring** - Protein density, carb quality, processing, transparency
-- 🔎 **Fuzzy Search** - Find foods by name
-- 📷 **Barcode Lookup** - GTIN → nutrition
+- 🔎 **Fuzzy Search** - RapidFuzz-powered typo-tolerant search
+- 📷 **Barcode Lookup** - GTIN → nutrition + enrichment
+- 🗺️ **Label Mapping** - 100% coverage (all 101 Food-101 classes)
 - 🚀 **Zero Config** - Works on Replit, Render, Railway, localhost
+- 🔒 **Privacy-First** - All data stored locally, no external API calls
 
-## 🚀 Quick Start
+---
+
+## 📦 Manual Setup (Alternative)
+
+If you prefer step-by-step setup:
 
 ### 1. Install Dependencies
 
@@ -30,18 +70,18 @@ pip install -r requirements.txt
 python tools/download_model.py
 ```
 
-This downloads the Food-101 ResNet-50 model (~100MB).
+Downloads Food-101 ResNet-50 model (~100MB) with auto-retry.
 
-### 3. Seed Database
+### 3. Import Data
 
 ```bash
-# Import CoFID (UK government nutrition data)
+# UK CoFID (3,000+ generic foods)
 python seeds/import_cofid.py
 
-# Import OpenFoodFacts (optional, ~2GB)
+# OpenFoodFacts (15,000 UK products)
 python seeds/import_off.py
 
-# Build label map (Food-101 → canonical foods)
+# Build label map (101 Food-101 classes → CoFID foods)
 python tools/build_label_map.py
 ```
 
